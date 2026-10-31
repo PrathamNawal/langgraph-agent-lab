@@ -132,22 +132,3 @@ correct, not just plausible.
 | Model answers simple arithmetic from memory instead of calling the tool, so a wrong answer on harder numbers goes unflagged | Medium | Medium | System prompt makes tool use mandatory for all arithmetic (already applied); a future eval (Module 7) should measure tool-skip rate directly, not just trust the prompt |
 | Some Groq-hosted models don't support tool calling at all, breaking the agent entirely if selected | Medium | Medium | UI catches the error and tells the user to pick another model instead of crashing; a future version could pre-filter the model dropdown to tool-capable models only |
 | No persistent memory means any restart or refresh silently loses the whole conversation | High | Low–Medium | Acceptable for a learning module; explicitly resolved in Module 2 by adding a real checkpointer |
-
-## 10. Learning Objectives (PM Lens)
-
-- Demonstrates the core ReAct mechanic concretely: `bind_tools` + `tools_condition` +
-  `ToolNode`, and what's actually in `state["messages"]` as the loop runs.
-- Makes the **system prompt** tangible as a production lever, not a personality knob —
-  the exact same graph went from unreliable to reliable tool use purely by changing
-  the prompt, with no code change.
-- Key architectural insight: this is a single bounded tool-use loop, not a
-  multi-agent or open-ended autonomous system — it terminates deterministically the
-  moment the model stops requesting tools, which is a meaningfully different (and
-  simpler) thing to reason about than Module 6's multi-agent handoffs.
-- Natural next-level upgrade: Module 2 adds multiple tools, real persistent memory,
-  and the first version of the PM control panel — where "which system prompt wins" is
-  no longer a one-off manual test like this one, but a measured, versioned comparison.
-
-> **Key insight for this project:** reliable tool use is as much a prompting problem
-> as a wiring problem — the graph can be built correctly and the agent can still skip
-> the tool unless the system prompt makes tool use non-optional.
