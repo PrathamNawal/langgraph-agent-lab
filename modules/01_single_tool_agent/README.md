@@ -4,10 +4,11 @@
 
 ## What's here
 
-- `graph.py` — the canonical ReAct loop: `agent` node (LLM bound to one tool via
-  `bind_tools`) <-> `tools` node (`ToolNode`), routed by `tools_condition`. The one
-  tool is `calculator`, a safe arithmetic evaluator (`numexpr`). A system prompt
-  forces the agent to always call the tool for arithmetic rather than guess.
+- `graph.py` — the canonical ReAct loop: `agent` node (LLM bound to tools via
+  `bind_tools`) <-> `tools` node (`ToolNode`), routed by `tools_condition`. Two tools:
+  `calculator` (a safe arithmetic evaluator, `numexpr`) and `convert_units` (length/weight
+  unit conversion). A system prompt forces the agent to always call the right tool
+  rather than guess, for both arithmetic and unit conversion.
 - `app.py` — chat UI (via `common/groq_ui.py`, shared with Module 0) that also shows,
   per answer, a "Tool calls made for this answer" trace: the exact expression sent to
   the tool and the real result it returned.
@@ -35,3 +36,11 @@ streamlit run modules/01_single_tool_agent/app.py
   ids to the corresponding `ToolMessage` in `state["messages"]` - this is the same
   message-list structure Module 2's dashboard will read from for monitoring, so it's
   worth understanding this matching logic now.
+- Added `convert_units` as the second tool (PLAN.md's "done when" for this module).
+  `TOOLS` and `SYSTEM_PROMPT` both needed updating - binding a second tool via `bind_tools`
+  isn't enough on its own; the forcing instruction had to explicitly call out unit
+  conversion too, or the model could plausibly skip the tool the same way it originally
+  skipped `calculator`. The trace UI in `app.py` was hardcoded to the word "calculator"
+  and to a single `expression` arg, so it had to be generalized to render any tool's
+  name and keyword args - worth remembering that UI assumptions baked in for a one-tool
+  agent don't automatically survive adding a second tool.

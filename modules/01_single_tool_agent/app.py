@@ -40,7 +40,8 @@ for i, msg in enumerate(st.session_state.messages):
         if msg["role"] == "assistant" and i < len(st.session_state.traces) and st.session_state.traces[i]:
             with st.expander("Tool calls made for this answer", icon=":material/build:"):
                 for call in st.session_state.traces[i]:
-                    st.code(f"calculator({call['args']!r}) -> {call['result']}", language="text")
+                    arg_str = ", ".join(f"{k}={v!r}" for k, v in call["args"].items())
+                    st.code(f"{call['name']}({arg_str}) -> {call['result']}", language="text")
 
 if prompt := st.chat_input("Try: \"What is 847 * 23, plus 19?\""):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -68,14 +69,19 @@ if prompt := st.chat_input("Try: \"What is 847 * 23, plus 19?\""):
                         (fm for fm in full_messages if getattr(fm, "type", None) == "tool" and fm.tool_call_id == tc["id"]),
                         None,
                     )
-                    trace.append({"args": tc["args"].get("expression", tc["args"]), "result": matching.content if matching else "?"})
+                    trace.append({
+                        "name": tc["name"],
+                        "args": tc["args"],
+                        "result": matching.content if matching else "?",
+                    })
 
         response = full_messages[-1].content
         st.write(response)
         if trace:
             with st.expander("Tool calls made for this answer", icon=":material/build:"):
                 for call in trace:
-                    st.code(f"calculator({call['args']!r}) -> {call['result']}", language="text")
+                    arg_str = ", ".join(f"{k}={v!r}" for k, v in call["args"].items())
+                    st.code(f"{call['name']}({arg_str}) -> {call['result']}", language="text")
 
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.session_state.traces.append(trace)

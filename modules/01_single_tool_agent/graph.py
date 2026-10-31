@@ -34,12 +34,40 @@ def calculator(expression: str) -> str:
         return f"Error evaluating '{expression}': {e}"
 
 
-TOOLS = [calculator]
+# Base unit per category: length in meters, weight in kilograms. To convert,
+# go unit -> base -> unit, so adding a new unit only ever needs one number.
+_UNIT_GROUPS = {
+    "length": {"m": 1.0, "km": 1000.0, "mi": 1609.344, "ft": 0.3048, "cm": 0.01},
+    "weight": {"kg": 1.0, "g": 0.001, "lb": 0.453592, "oz": 0.0283495},
+}
+
+
+@tool
+def convert_units(value: float, from_unit: str, to_unit: str) -> str:
+    """Convert a numeric value between units of length (m, km, mi, ft, cm) or
+    weight (kg, g, lb, oz). Use this for any unit conversion instead of doing
+    it yourself - you are unreliable at remembering exact conversion factors."""
+    from_unit = from_unit.strip().lower()
+    to_unit = to_unit.strip().lower()
+
+    group = next((g for g in _UNIT_GROUPS.values() if from_unit in g and to_unit in g), None)
+    if group is None:
+        known = {u for g in _UNIT_GROUPS.values() for u in g}
+        return f"Error: can't convert '{from_unit}' to '{to_unit}' - both units must be from the same category. Known units: {sorted(known)}"
+
+    base_value = value * group[from_unit]
+    result = base_value / group[to_unit]
+    return str(result)
+
+
+TOOLS = [calculator, convert_units]
 
 SYSTEM_PROMPT = (
     "You are a careful assistant. For ANY arithmetic, no matter how simple it looks "
     "(even single-digit math), you must call the calculator tool rather than computing "
-    "it yourself - you are not reliable at mental math and must never guess."
+    "it yourself - you are not reliable at mental math and must never guess. For ANY "
+    "unit conversion, you must call the convert_units tool rather than recalling the "
+    "conversion factor from memory - you are not reliable at that either."
 )
 
 
