@@ -9,9 +9,13 @@
   `calculator` (a safe arithmetic evaluator, `numexpr`) and `convert_units` (length/weight
   unit conversion). A system prompt forces the agent to always call the right tool
   rather than guess, for both arithmetic and unit conversion.
-- `app.py` — chat UI (via `common/groq_ui.py`, shared with Module 0) that also shows,
-  per answer, a "Tool calls made for this answer" trace: the exact expression sent to
-  the tool and the real result it returned.
+- `app.py` — ONE deployed app: a free-form "Chat" page (via `common/groq_ui.py`, shared
+  with Module 0) showing the tool-call trace per answer, plus the full PM control panel
+  (What is this / How it works / Try it - Human / Try it - Agent / Play / Track
+  Performance) as the other six nav pages - not a separate dashboard app.
+- `dashboard/` — `config_store.py` (versioned config incl. `enabled_tools`),
+  `mlflow_tracking.py`, `live_agent.py` (wraps the real `build_graph()` for the
+  dashboard's live-investigation page). Imported by `app.py`, not run standalone.
 
 ## Run it
 
@@ -44,3 +48,9 @@ streamlit run modules/01_single_tool_agent/app.py
   and to a single `expression` arg, so it had to be generalized to render any tool's
   name and keyword args - worth remembering that UI assumptions baked in for a one-tool
   agent don't automatically survive adding a second tool.
+- Merged what used to be a separate `dashboard/` deployment into this module's own
+  `app.py` as extra nav pages, after feedback that a stranger visiting the deployed
+  agent shouldn't have to find a *different* URL to see its PM control panel. The
+  dashboard's `config_store`/`mlflow_tracking`/`live_agent` files moved into
+  `modules/01_single_tool_agent/dashboard/` and import the real `graph.py` one
+  directory up - same pattern Module 2 follows.

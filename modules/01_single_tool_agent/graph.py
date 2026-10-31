@@ -80,13 +80,16 @@ def build_graph(
     temperature: float = 0.0,
     api_key: str | None = None,
     system_prompt: str | None = None,
+    enabled_tools: list[str] | None = None,
 ):
     """system_prompt lets a caller (e.g. the PM dashboard) override the default
     SYSTEM_PROMPT to experiment with its wording - the dashboard's "Play" page
     deploys configs that change this, so Module 1's own app.py (which never
-    passes it) keeps behaving exactly as before."""
+    passes it) keeps behaving exactly as before. enabled_tools restricts which
+    of TOOLS get bound (by name); None means all of them."""
     llm = ChatGroq(model=model, temperature=temperature, api_key=api_key or os.environ.get("GROQ_API_KEY"))
-    llm_with_tools = llm.bind_tools(TOOLS)
+    active_tools = [t for t in TOOLS if enabled_tools is None or t.name in enabled_tools]
+    llm_with_tools = llm.bind_tools(active_tools)
     effective_system_prompt = system_prompt if system_prompt is not None else SYSTEM_PROMPT
 
     def agent_node(state: State) -> State:
@@ -98,7 +101,7 @@ def build_graph(
 
     graph = StateGraph(State)
     graph.add_node("agent", agent_node)
-    graph.add_node("tools", ToolNode(TOOLS))
+    graph.add_node("tools", ToolNode(active_tools))
 
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition)  # -> "tools" or END

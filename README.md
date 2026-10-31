@@ -22,17 +22,23 @@ cp .env.example .env   # fill in your API key(s)
 python modules/<module>/graph.py
 ```
 
-## Running the PM control panel (from Module 2 onward)
+## Running a module's app
+
+Each module that has reached the PM-dashboard stage ships ONE Streamlit app -
+a free-form Chat page plus the guided PM control panel (What is this / How it
+works / Try it - Human / Try it - Agent / Play / Track Performance) - not two
+separate apps:
 
 ```bash
-streamlit run dashboard/app.py
+streamlit run modules/01_single_tool_agent/app.py
+streamlit run modules/02_multi_tool_memory/app.py
 ```
 
 ## Repo layout
 
 ```
 modules/        one folder per curriculum stage, each with its own graph.py + README
-dashboard/      Streamlit PM control panel (config, monitoring, version comparison)
+modules/<n>/app.py        that module's combined Chat + PM dashboard app
+modules/<n>/dashboard/    that module's config_store / mlflow_tracking / live_agent
 eval_sets/      small real labeled example sets used to score agent config versions
-mlruns/         local MLflow tracking store
 ```

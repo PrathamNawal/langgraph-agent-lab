@@ -1,26 +1,22 @@
-"""Runs the REAL Module 2 LangGraph agent (modules/02_multi_tool_memory/graph.py)
+"""Runs the REAL Module 1 LangGraph agent (modules/01_single_tool_agent/graph.py)
 against an eval question, yielding trace events as LangGraph's own .stream()
 produces them - so "Try it - Agent" shows the actual graph executing live,
 not a reimplementation of its logic.
-
-Each investigation gets a fresh, unique thread_id (not the real app's shared
-Conversation ID) so dashboard eval runs never read or pollute an actual
-user's persisted conversation, and so config comparisons stay apples-to-apples
-(every run starts from a genuinely blank memory state).
 """
 
 import os
 import re
 import sys
-import uuid
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "modules", "02_multi_tool_memory"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from graph import build_graph  # noqa: E402
 
 _NUMBER_RE = re.compile(r"-?\$?\d[\d,]*(\.\d+)?")
 
 
 def extract_number(text):
+    """Pull the first number-looking token out of the model's final answer,
+    so it can be compared against the eval question's known ground truth."""
     if not text:
         return None
     m = _NUMBER_RE.search(text)
@@ -34,34 +30,15 @@ def extract_number(text):
         return None
 
 
-def score_answer(answer_text, expected):
-    """Scores a free-text answer against an eval item's expected value. Numeric
-    expected values (calculator, days_between items) are compared as numbers
-    with tolerance; text expected values (lookup_fact items) are compared as a
-    case-insensitive substring match, since the model may add surrounding
-    words around the exact fact."""
-    if answer_text is None:
-        return False
-    try:
-        expected_num = float(str(expected).replace(",", ""))
-        predicted_num = extract_number(answer_text)
-        return predicted_num is not None and abs(predicted_num - expected_num) < 0.01
-    except ValueError:
-        pass
-    normalize = lambda s: re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
-    return normalize(str(expected)) in normalize(answer_text)
-
-
 def run_investigation_stream(item, config, api_key):
     """
-    item: {"id", "question", "answer", "tool"} from eval_sets/module_02.jsonl
-    config: active deployed config dict (system_prompt, model, temperature,
-            enabled_tools, memory_window)
+    item: {"id", "question", "answer"} from eval_sets/calculator_eval.py
+    config: active deployed config dict (model, temperature, system_prompt, enabled_tools)
 
     Yields trace-event dicts as the real graph executes:
       {"type": "turn", "turn": n}
       {"type": "tool_call", "turn": n, "tool": str, "input": {...}, "result": str}
-      {"type": "final", "answer_text": str, "turns_used": n}
+      {"type": "final", "answer_text": str, "predicted_value": number|None, "turns_used": n}
       {"type": "error", "message": str}
     """
     if not api_key:
@@ -78,19 +55,18 @@ def run_investigation_stream(item, config, api_key):
             api_key=api_key,
             system_prompt=config.get("system_prompt"),
             enabled_tools=config.get("enabled_tools"),
-            memory_window=config.get("memory_window"),
         )
     except Exception as e:
         yield {"type": "error", "message": f"{type(e).__name__}: {e}"}
         return
 
-    run_config = {"configurable": {"thread_id": f"dashboard-eval-{uuid.uuid4()}"}}
+    state = {"messages": [{"role": "user", "content": item["question"]}]}
     turn = 0
     pending_tool_calls = {}
     final_text = None
 
     try:
-        for update in app.stream({"messages": [{"role": "user", "content": item["question"]}]}, config=run_config, stream_mode="updates"):
+        for update in app.stream(state, stream_mode="updates"):
             if "agent" in update:
                 turn += 1
                 yield {"type": "turn", "turn": turn}
@@ -109,4 +85,5 @@ def run_investigation_stream(item, config, api_key):
         yield {"type": "error", "message": f"{type(e).__name__}: {e}"}
         return
 
-    yield {"type": "final", "answer_text": final_text, "turns_used": turn}
+    predicted_value = extract_number(final_text)
+    yield {"type": "final", "answer_text": final_text, "predicted_value": predicted_value, "turns_used": turn}
