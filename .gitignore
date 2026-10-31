@@ -6,3 +6,4 @@ mlruns/
 *.db
 .DS_Store
 .streamlit/secrets.toml
+.claude/launch.json
