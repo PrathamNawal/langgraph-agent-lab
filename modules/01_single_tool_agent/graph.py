@@ -1,11 +1,11 @@
-"""Module 1: the canonical ReAct-style agent - one tool, a loop, a conditional edge.
+"""Module 1: the canonical ReAct-style agent - two tools, a loop, a conditional edge.
 
 Graph shape:
 
     START -> agent --(has tool call?)--> tools -> agent -> ... -> END
                  \\--(no tool call)----------------------------> END
 
-The LLM decides whether to call the calculator tool. If it does, `tools_condition`
+The LLM decides which tool (calculator or unit_converter) to call, if any. If it does, `tools_condition`
 routes to the `tools` node, which executes it and loops back to `agent`. If not,
 the graph ends. This loop is what makes it an *agent* rather than a single LLM call.
 """
@@ -34,12 +34,39 @@ def calculator(expression: str) -> str:
         return f"Error evaluating '{expression}': {e}"
 
 
-TOOLS = [calculator]
+_LENGTH_M = {"mm": 0.001, "cm": 0.01, "m": 1.0, "km": 1000.0, "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344}
+_MASS_KG = {"g": 0.001, "kg": 1.0, "lb": 0.45359237, "oz": 0.028349523125}
+
+
+@tool
+def unit_converter(value: float, from_unit: str, to_unit: str) -> str:
+    """Convert a value between units of length (mm, cm, m, km, in, ft, yd, mi), mass
+    (g, kg, lb, oz) or temperature (C, F, K). E.g. value=5, from_unit="mi", to_unit="km".
+    Use this for any unit conversion instead of doing it yourself."""
+    f, t = from_unit.strip().lower(), to_unit.strip().lower()
+    try:
+        if f in ("c", "f", "k") and t in ("c", "f", "k"):
+            celsius = {"c": value, "f": (value - 32) * 5 / 9, "k": value - 273.15}[f]
+            result = {"c": celsius, "f": celsius * 9 / 5 + 32, "k": celsius + 273.15}[t]
+        else:
+            for table in (_LENGTH_M, _MASS_KG):
+                if f in table and t in table:
+                    result = value * table[f] / table[t]
+                    break
+            else:
+                return f"Error: cannot convert '{from_unit}' to '{to_unit}' (unknown or incompatible units)."
+        return f"{value} {from_unit} = {result:.6g} {to_unit}"
+    except Exception as e:
+        return f"Error converting {value} {from_unit} to {to_unit}: {e}"
+
+
+TOOLS = [calculator, unit_converter]
 
 SYSTEM_PROMPT = (
     "You are a careful assistant. For ANY arithmetic, no matter how simple it looks "
     "(even single-digit math), you must call the calculator tool rather than computing "
-    "it yourself - you are not reliable at mental math and must never guess."
+    "it yourself - you are not reliable at mental math and must never guess. For ANY "
+    "unit conversion (length, mass, temperature), you must call the unit_converter tool."
 )
 
 

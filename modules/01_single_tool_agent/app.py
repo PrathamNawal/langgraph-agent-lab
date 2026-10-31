@@ -19,7 +19,7 @@ from graph import build_graph
 st.set_page_config(page_title="Module 1: single tool agent", page_icon=":material/calculate:")
 
 st.title("Module 1: single tool-using agent")
-st.caption("A ReAct-style loop: the agent decides whether to call the calculator tool.")
+st.caption("A ReAct-style loop: the agent decides whether to call the calculator or unit_converter tool.")
 
 api_key, model = groq_sidebar()
 
@@ -40,9 +40,9 @@ for i, msg in enumerate(st.session_state.messages):
         if msg["role"] == "assistant" and i < len(st.session_state.traces) and st.session_state.traces[i]:
             with st.expander("Tool calls made for this answer", icon=":material/build:"):
                 for call in st.session_state.traces[i]:
-                    st.code(f"calculator({call['args']!r}) -> {call['result']}", language="text")
+                    st.code(f"{call['name']}({call['args']}) -> {call['result']}", language="text")
 
-if prompt := st.chat_input("Try: \"What is 847 * 23, plus 19?\""):
+if prompt := st.chat_input("Try: \"How many km is 26.2 miles, times 3?\""):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
@@ -68,24 +68,24 @@ if prompt := st.chat_input("Try: \"What is 847 * 23, plus 19?\""):
                         (fm for fm in full_messages if getattr(fm, "type", None) == "tool" and fm.tool_call_id == tc["id"]),
                         None,
                     )
-                    trace.append({"args": tc["args"].get("expression", tc["args"]), "result": matching.content if matching else "?"})
+                    trace.append({"name": tc["name"], "args": ", ".join(f"{k}={v!r}" for k, v in tc["args"].items()), "result": matching.content if matching else "?"})
 
         response = full_messages[-1].content
         st.write(response)
         if trace:
             with st.expander("Tool calls made for this answer", icon=":material/build:"):
                 for call in trace:
-                    st.code(f"calculator({call['args']!r}) -> {call['result']}", language="text")
+                    st.code(f"{call['name']}({call['args']}) -> {call['result']}", language="text")
 
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.session_state.traces.append(trace)
 
 with st.expander("What's happening under the hood"):
     st.markdown(
-        "- `agent` node calls the LLM with `calculator` bound via `bind_tools`\n"
+        "- `agent` node calls the LLM with `calculator` and `unit_converter` bound via `bind_tools`\n"
         "- `tools_condition` checks the LLM's last message for a tool call and routes to "
         "`tools` (a `ToolNode`) or straight to `END`\n"
-        "- `tools` executes the real calculator and loops back to `agent` with the result "
+        "- `tools` executes the real tool(s) and loops back to `agent` with the result "
         "appended to `state[\"messages\"]`\n"
-        "- The agent can loop more than once per turn if it needs multiple calculations"
+        "- The agent can loop more than once per turn if it needs multiple tool calls (e.g. convert, then calculate)"
     )

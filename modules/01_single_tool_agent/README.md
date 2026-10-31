@@ -5,8 +5,8 @@
 ## What's here
 
 - `graph.py` — the canonical ReAct loop: `agent` node (LLM bound to one tool via
-  `bind_tools`) <-> `tools` node (`ToolNode`), routed by `tools_condition`. The one
-  tool is `calculator`, a safe arithmetic evaluator (`numexpr`). A system prompt
+  `bind_tools`) <-> `tools` node (`ToolNode`), routed by `tools_condition`. The tools are
+  `calculator` (safe arithmetic via `numexpr`) and `unit_converter` (length/mass/temperature, pure Python). A system prompt
   forces the agent to always call the tool for arithmetic rather than guess.
 - `app.py` — chat UI (via `common/groq_ui.py`, shared with Module 0) that also shows,
   per answer, a "Tool calls made for this answer" trace: the exact expression sent to
