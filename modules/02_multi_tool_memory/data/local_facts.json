@@ -1,0 +1,52 @@
+[
+  {
+    "question": "What LLM provider does this project use?",
+    "answer": "Groq.",
+    "keywords": ["llm", "provider", "model", "groq"]
+  },
+  {
+    "question": "What is Module 0 about?",
+    "answer": "A single LangGraph node that calls an LLM with no tools and no branching - the simplest possible graph.",
+    "keywords": ["module", "0", "hello", "world", "simplest"]
+  },
+  {
+    "question": "What is Module 1 about?",
+    "answer": "A single tool-using ReAct agent with a calculator and a unit-converter tool, looping between an agent node and a tools node.",
+    "keywords": ["module", "1", "calculator", "convert", "tool", "react"]
+  },
+  {
+    "question": "What does Module 2 add?",
+    "answer": "Multiple tools, real persistent memory via a SQLite checkpointer, and the agent this project's PM dashboard was built against.",
+    "keywords": ["module", "2", "memory", "checkpointer", "multi-tool", "dashboard"]
+  },
+  {
+    "question": "What UI framework does this project use?",
+    "answer": "Streamlit.",
+    "keywords": ["ui", "framework", "streamlit", "dashboard"]
+  },
+  {
+    "question": "What experiment tracker does the dashboard use?",
+    "answer": "MLflow, backed by a local SQLite database.",
+    "keywords": ["experiment", "tracker", "mlflow", "tracking"]
+  },
+  {
+    "question": "How are API keys handled in this project?",
+    "answer": "Bring-your-own-key: entered live in the Streamlit sidebar each session, never stored in .env or committed to the repo.",
+    "keywords": ["api", "key", "credential", "groq", "sidebar"]
+  },
+  {
+    "question": "What does the calculator tool use to evaluate expressions?",
+    "answer": "numexpr, a safe arithmetic expression evaluator.",
+    "keywords": ["calculator", "numexpr", "arithmetic", "evaluate"]
+  },
+  {
+    "question": "What reducer does the agent's state use for messages?",
+    "answer": "add_messages, which appends new messages instead of overwriting the list.",
+    "keywords": ["reducer", "add_messages", "state", "messages"]
+  },
+  {
+    "question": "What was the first real bug found while building this project?",
+    "answer": "The agent sometimes answered arithmetic from memory instead of calling the calculator tool, until a forcing system prompt fixed it.",
+    "keywords": ["bug", "tool", "skip", "system", "prompt", "arithmetic"]
+  }
+]

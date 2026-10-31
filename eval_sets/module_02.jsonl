@@ -1,0 +1,12 @@
+{"id": "m2_1", "question": "What is 847 * 23?", "tool": "calculator", "answer": "19481"}
+{"id": "m2_2", "question": "What is 1000 divided by 8?", "tool": "calculator", "answer": "125"}
+{"id": "m2_3", "question": "What is 15% of 240?", "tool": "calculator", "answer": "36"}
+{"id": "m2_4", "question": "What LLM provider does this project use?", "tool": "lookup_fact", "answer": "Groq."}
+{"id": "m2_5", "question": "What does the calculator tool use to evaluate expressions?", "tool": "lookup_fact", "answer": "numexpr, a safe arithmetic expression evaluator."}
+{"id": "m2_6", "question": "How are API keys handled in this project?", "tool": "lookup_fact", "answer": "Bring-your-own-key: entered live in the Streamlit sidebar each session, never stored in .env or committed to the repo."}
+{"id": "m2_7", "question": "What reducer does the agent's state use for messages?", "tool": "lookup_fact", "answer": "add_messages, which appends new messages instead of overwriting the list."}
+{"id": "m2_8", "question": "How many days are there between 2026-01-01 and 2026-03-15?", "tool": "days_between", "answer": "73"}
+{"id": "m2_9", "question": "How many days between 2026-06-01 and 2026-06-01?", "tool": "days_between", "answer": "0"}
+{"id": "m2_10", "question": "How many days passed between 2025-12-25 and 2026-01-05?", "tool": "days_between", "answer": "11"}
+{"id": "m2_11", "question": "What is 2 + 2 * 10?", "tool": "calculator", "answer": "22"}
+{"id": "m2_12", "question": "What experiment tracker does the dashboard use?", "tool": "lookup_fact", "answer": "MLflow, backed by a local SQLite database."}

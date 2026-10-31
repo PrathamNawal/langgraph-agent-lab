@@ -4,6 +4,8 @@ __pycache__/
 .env
 mlruns/
 *.db
+*.db-shm
+*.db-wal
 dashboard/data/agent_configs.json
 .DS_Store
 .streamlit/secrets.toml
