@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "dashboard"))
 
 from graph import build_graph  # noqa: E402
 from common.groq_ui import list_groq_models  # noqa: E402
+from common.agent_canvas import render_graph_canvas  # noqa: E402
 from eval_sets.calculator_eval import EVAL_QUESTIONS  # noqa: E402
 import config_store  # noqa: E402
 import mlflow_tracking  # noqa: E402
@@ -281,25 +282,8 @@ elif page == "2. How it works":
     )
 
     st.markdown("#### The agent loop")
-    st.markdown("""
-```
-  Question comes in
-        │
-        ▼
-  agent node (LLM + calculator & convert_units bound via bind_tools)
-        │
-        ▼
-  tool_calls present?  ──No──►  answer directly  ──►  END
-        │ Yes
-        ▼
-  tools node runs the real tool that was requested
-        │
-        ▼
-  back to agent node, now with the exact result in state
-        │
-        └──► loops until the model stops requesting a tool
-```
-""")
+    st.caption("This is the real compiled graph, not a drawing - generated live from `app.get_graph()`.")
+    render_graph_canvas(build_graph(api_key="unset"), key="m1_how_it_works_canvas")
 
     cols = st.columns(2)
     for col, tool_name in zip(cols, config_store.ALL_TOOLS):

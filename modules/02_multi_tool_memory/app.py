@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "dashboard"))
 
 from graph import build_graph, TOOLS  # noqa: E402
 from common.groq_ui import list_groq_models  # noqa: E402
+from common.agent_canvas import render_graph_canvas  # noqa: E402
 import config_store  # noqa: E402
 import mlflow_tracking  # noqa: E402
 from live_agent import run_investigation_stream, score_answer  # noqa: E402
@@ -317,28 +318,8 @@ elif page == "2. How it works":
     )
 
     st.markdown("#### The agent loop")
-    st.markdown("""
-```
-  Question comes in, tagged with a Conversation ID
-        │
-        ▼
-  SQLite checkpoint loads this thread's persisted history
-        │
-        ▼
-  agent node (LLM + up to 4 tools, context trimmed to the memory window)
-        │
-        ▼
-  tool_calls present?  ──No──►  answer directly  ──►  END (new state persisted)
-        │ Yes
-        ▼
-  tools node runs the real tool that was requested
-        │
-        ▼
-  back to agent node, now with the exact result in state
-        │
-        └──► loops until the model stops requesting a tool
-```
-""")
+    st.caption("This is the real compiled graph, not a drawing - generated live from `app.get_graph()`. The checkpointer sits outside the graph itself: it loads/saves state around every run, which is why you won't see it as its own node here.")
+    render_graph_canvas(build_graph(api_key="unset"), key="m2_how_it_works_canvas")
 
     cols = st.columns(4)
     for col, tool_name in zip(cols, config_store.ALL_TOOLS):

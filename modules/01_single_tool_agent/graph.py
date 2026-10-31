@@ -99,9 +99,14 @@ def build_graph(
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
+    # metadata={"kind": ..., "configurable": [...]} is a built-in LangGraph
+    # feature (shows up on get_graph().nodes[id].metadata) - the dashboard's
+    # visual canvas (common/agent_canvas) reads this directly off the real
+    # compiled graph instead of maintaining a separate node registry, so the
+    # canvas can never drift out of sync with what this graph actually does.
     graph = StateGraph(State)
-    graph.add_node("agent", agent_node)
-    graph.add_node("tools", ToolNode(active_tools))
+    graph.add_node("agent", agent_node, metadata={"kind": "agent", "configurable": ["system_prompt", "model", "temperature"]})
+    graph.add_node("tools", ToolNode(active_tools), metadata={"kind": "tool_router", "configurable": ["enabled_tools"]})
 
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition)  # -> "tools" or END

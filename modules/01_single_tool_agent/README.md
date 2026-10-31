@@ -12,7 +12,9 @@
 - `app.py` — ONE deployed app: a free-form "Chat" page (via `common/groq_ui.py`, shared
   with Module 0) showing the tool-call trace per answer, plus the full PM control panel
   (What is this / How it works / Try it - Human / Try it - Agent / Play / Track
-  Performance) as the other six nav pages - not a separate dashboard app.
+  Performance) as the other six nav pages - not a separate dashboard app. "How it works"
+  renders the graph as a real interactive canvas (`common/agent_canvas`), generated from
+  `app.get_graph()` - see that package's README for how later modules plug into it.
 - `dashboard/` — `config_store.py` (versioned config incl. `enabled_tools`),
   `mlflow_tracking.py`, `live_agent.py` (wraps the real `build_graph()` for the
   dashboard's live-investigation page). Imported by `app.py`, not run standalone.

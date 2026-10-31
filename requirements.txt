@@ -10,3 +10,4 @@ python-dotenv>=1.0
 pydantic>=2.9
 numexpr>=2.10
 tavily-python>=0.5  # optional: only needed for Module 2's web_search tool
+streamlit-flow-component>=1.6  # visual graph canvas on the "How it works" dashboard page

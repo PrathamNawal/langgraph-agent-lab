@@ -28,6 +28,9 @@
   **Conversation ID** (`thread_id`). History shown on screen is read back with
   `app.get_state(config)`, not from `st.session_state` - so a full process
   restart, not just a page refresh, still resumes the same conversation.
+  "How it works" renders the real graph as an interactive canvas
+  (`common/agent_canvas`) - same shared package Module 1 uses, zero
+  module-specific canvas code.
 - `dashboard/` — `config_store.py` (versioned config incl. `enabled_tools` and
   `memory_window`), `mlflow_tracking.py`, `live_agent.py` (wraps the real
   `build_graph()`, giving every dashboard investigation its own fresh
