@@ -9,6 +9,9 @@ from pathlib import Path
 
 import streamlit as st
 
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from common.groq_ui import groq_sidebar
+
 sys.path.insert(0, str(Path(__file__).parent))
 from graph import build_graph
 
@@ -17,43 +20,7 @@ st.set_page_config(page_title="Module 0: hello world", page_icon=":material/smar
 st.title("Module 0: hello world")
 st.caption("One LangGraph node, no tools, no branching.")
 
-@st.cache_data(ttl=600, show_spinner=False)
-def list_groq_models(key: str) -> list[str]:
-    from groq import Groq
-
-    client = Groq(api_key=key)
-    models = client.models.list().data
-    chat_models = [
-        m.id for m in models
-        if not any(x in m.id.lower() for x in ("whisper", "tts", "guard", "prompt-guard"))
-    ]
-    return sorted(chat_models)
-
-
-with st.sidebar:
-    st.subheader("Groq API key")
-    api_key = st.text_input(
-        "GROQ_API_KEY",
-        type="password",
-        label_visibility="collapsed",
-        placeholder="gsk_...",
-        help="Used only for this session - never stored or sent anywhere else.",
-    )
-
-    model = None
-    if api_key:
-        try:
-            available_models = list_groq_models(api_key)
-        except Exception as e:
-            st.error(f"Couldn't reach Groq with this key: {e}")
-            st.stop()
-
-        if not available_models:
-            st.error("This key has no chat models available on Groq.")
-            st.stop()
-
-        default_idx = available_models.index("llama-3.1-8b-instant") if "llama-3.1-8b-instant" in available_models else 0
-        model = st.selectbox("Model", available_models, index=default_idx)
+api_key, model = groq_sidebar()
 
 if not api_key:
     st.info("Enter your Groq API key in the sidebar to start chatting.", icon=":material/key:")
