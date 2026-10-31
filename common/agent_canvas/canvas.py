@@ -13,13 +13,16 @@ from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
 from streamlit_flow.layouts import ManualLayout
 from streamlit_flow.state import StreamlitFlowState
 
-from .topology import build_elements, layered_positions
+from .topology import build_elements, layered_positions, expand_tool_children
 
 
 def _to_flow_elements(nodes, edges):
     positions = layered_positions(nodes, edges)
+    nodes, edges, positions = expand_tool_children(nodes, edges, positions)
+
     flow_nodes = []
     for n in nodes:
+        is_synthetic = n.get("synthetic", False)
         content = f"{n['style']['icon']} **{n['label']}**"
         flow_nodes.append(StreamlitFlowNode(
             id=n["id"],
@@ -31,29 +34,33 @@ def _to_flow_elements(nodes, edges):
             # layout engine can space nodes predictably without overlap.
             style={
                 "background": n["style"]["bg"],
-                "border": f"2px solid {n['style']['border']}",
-                "borderRadius": "10px",
-                "fontSize": "13px",
-                "width": "140px",
+                "border": f"{'1px dashed' if is_synthetic else '2px solid'} {n['style']['border']}",
+                "borderRadius": "10px" if not is_synthetic else "8px",
+                "fontSize": "13px" if not is_synthetic else "11px",
+                "width": "140px" if not is_synthetic else "110px",
                 "textAlign": "center",
             },
         ))
 
     flow_edges = []
     for e in edges:
+        synthetic = e.get("synthetic", False)
         flow_edges.append(StreamlitFlowEdge(
             id=e["id"],
             source=e["source"],
             target=e["target"],
             animated=e["conditional"],
             edge_type="smoothstep",
-            style={"stroke": "#9a5b12" if e["conditional"] else "#6b6859"},
+            # Synthetic tool-router -> tool edges are deliberately thin, gray
+            # and non-animated - they represent "this tool is bound", not a
+            # transition the graph's execution ever actually takes.
+            style={"stroke": "#c8c5ba" if synthetic else ("#9a5b12" if e["conditional"] else "#6b6859")},
         ))
 
     return flow_nodes, flow_edges
 
 
-def render_graph_canvas(compiled_graph, key, mode="readonly", height=430):
+def render_graph_canvas(compiled_graph, key, mode="readonly", height=520):
     """mode: "readonly" (no interaction beyond pan/zoom) or "edit" (nodes are
     clickable; returns the clicked node's id so the caller can show that
     node's `configurable` fields - the fields themselves come from

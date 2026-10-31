@@ -17,6 +17,11 @@ in a later module is a one-line addition here, not a redesign.
 KIND_STYLES = {
     "agent": {"icon": "\U0001f9e0", "bg": "#dce9f5", "border": "#2f5d8a"},
     "tool_router": {"icon": "\U0001f527", "bg": "#f6e3c6", "border": "#9a5b12"},
+    # "tool" is a synthetic satellite node (see expand_tool_children) - one
+    # per tool actually bound to a tool_router, pulled from the real graph's
+    # own metadata, not a real LangGraph node. Styled visibly lighter than
+    # tool_router so it never gets confused with real graph structure.
+    "tool": {"icon": "\U0001fa9b", "bg": "#fbf3e5", "border": "#c89a4a"},
     "router": {"icon": "\U0001f500", "bg": "#e9e1f5", "border": "#6b4b9a"},
     "human_approval": {"icon": "\U0001f9d1", "bg": "#f5e6c6", "border": "#9a7612"},
     "guardrail": {"icon": "\U0001f6e1", "bg": "#f6dcd8", "border": "#a3372f"},
@@ -74,6 +79,7 @@ def build_elements(compiled_graph):
             "kind": kind,
             "style": style,
             "configurable": meta.get("configurable", []),
+            "tools": meta.get("__tools", []),
             "is_terminal": node_id in _TERMINAL_IDS,
         })
 
@@ -138,3 +144,55 @@ def layered_positions(nodes, edges, start_id="__start__", x_gap=170, y_gap=90):
             positions[nid] = (x, y)
 
     return positions
+
+
+def expand_tool_children(nodes, edges, positions, x_gap=150, y_gap=90):
+    """Turns a tool_router's bound-tool list into real satellite nodes, one
+    per tool, instead of cramming names as text inside the router node.
+
+    This exists because a glance at "tools" with no detail tells a viewer
+    nothing - every module's canvas looked identical regardless of what the
+    agent could actually do, which defeats the point of a *visual* canvas.
+    The tool names still come straight from the compiled graph's own
+    metadata (the ToolNode self-reports `__tools`), so this is still real
+    data, not a drawing - it's a presentation choice (structure instead of a
+    label), not a departure from "never hand-draw the graph."
+
+    These nodes/edges are NOT part of the compiled graph (LangGraph has no
+    node for "a tool exists" - a tool is a Python function the tools node
+    dispatches to internally), so they're marked `synthetic: True` and given
+    a visibly lighter style (KIND_STYLES["tool"]) so nobody mistakes them for
+    real execution steps the graph can route through.
+    """
+    new_nodes = list(nodes)
+    new_edges = list(edges)
+    new_positions = dict(positions)
+
+    for n in nodes:
+        tool_names = n.get("tools") or []
+        if n["kind"] != "tool_router" or not tool_names or n["id"] not in positions:
+            continue
+        parent_x, parent_y = positions[n["id"]]
+        width = (len(tool_names) - 1) * x_gap
+        for i, tool_name in enumerate(tool_names):
+            child_id = f"__tool__{n['id']}__{tool_name}"
+            new_nodes.append({
+                "id": child_id,
+                "label": tool_name,
+                "kind": "tool",
+                "style": KIND_STYLES["tool"],
+                "configurable": [],
+                "tools": [],
+                "is_terminal": False,
+                "synthetic": True,
+            })
+            new_edges.append({
+                "id": f"{n['id']}__{child_id}",
+                "source": n["id"],
+                "target": child_id,
+                "conditional": False,
+                "synthetic": True,
+            })
+            new_positions[child_id] = (parent_x + i * x_gap - width / 2, parent_y + y_gap)
+
+    return new_nodes, new_edges, new_positions
