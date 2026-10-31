@@ -47,14 +47,24 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
 
 
-def build_graph(model: str = "llama-3.1-8b-instant", temperature: float = 0.0, api_key: str | None = None):
+def build_graph(
+    model: str = "llama-3.1-8b-instant",
+    temperature: float = 0.0,
+    api_key: str | None = None,
+    system_prompt: str | None = None,
+):
+    """system_prompt lets a caller (e.g. the PM dashboard) override the default
+    SYSTEM_PROMPT to experiment with its wording - the dashboard's "Play" page
+    deploys configs that change this, so Module 1's own app.py (which never
+    passes it) keeps behaving exactly as before."""
     llm = ChatGroq(model=model, temperature=temperature, api_key=api_key or os.environ.get("GROQ_API_KEY"))
     llm_with_tools = llm.bind_tools(TOOLS)
+    effective_system_prompt = system_prompt if system_prompt is not None else SYSTEM_PROMPT
 
     def agent_node(state: State) -> State:
         messages = state["messages"]
         if not messages or getattr(messages[0], "type", messages[0].get("role") if isinstance(messages[0], dict) else None) != "system":
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
+            messages = [{"role": "system", "content": effective_system_prompt}] + list(messages)
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 

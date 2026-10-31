@@ -1,0 +1,706 @@
+<title>LangGraph From First Principles</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* layout: motivation -> vocabulary -> this agent's profile -> live step-through (3 scenarios
+   incl. a failure case) -> a "try your own question" sandbox with a tiny in-browser router,
+   so the same mental model generalizes beyond this one worked example */
+:root{
+  --bg:#f4f3ef;
+  --surface:#ffffff;
+  --surface-2:#ebe9e2;
+  --border:#d8d5cb;
+  --text:#1c1b17;
+  --text-dim:#6b6859;
+  --agent:#2f5d8a;
+  --agent-soft:#dce9f5;
+  --tool:#9a5b12;
+  --tool-soft:#f6e3c6;
+  --user:#6b4b9a;
+  --user-soft:#e9e1f5;
+  --end:#2f7a4f;
+  --end-soft:#dcefe2;
+  --error:#a3372f;
+  --error-soft:#f6dcd8;
+  --code-bg:#1c1b17;
+  --code-text:#eceae2;
+  --font-display:'Sora',system-ui,sans-serif;
+  --font-body:'Sora',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15161a; --surface:#1d1f25; --surface-2:#242730; --border:#333641;
+    --text:#eceeF2; --text-dim:#9298a6;
+    --agent:#7eb6ef; --agent-soft:#1f3b57;
+    --tool:#f0b15c; --tool-soft:#4a3a1c;
+    --user:#c3a7f0; --user-soft:#3a2f54;
+    --end:#7fd3a4; --end-soft:#1f4330;
+    --error:#f29a92; --error-soft:#4a2320;
+    --code-bg:#0d0e11; --code-text:#e3e5ea;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15161a; --surface:#1d1f25; --surface-2:#242730; --border:#333641;
+  --text:#eceeF2; --text-dim:#9298a6;
+  --agent:#7eb6ef; --agent-soft:#1f3b57;
+  --tool:#f0b15c; --tool-soft:#4a3a1c;
+  --user:#c3a7f0; --user-soft:#3a2f54;
+  --end:#7fd3a4; --end-soft:#1f4330;
+  --error:#f29a92; --error-soft:#4a2320;
+  --code-bg:#0d0e11; --code-text:#e3e5ea;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);padding-block:28px;}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));}
+section{margin-bottom:30px;}
+h1{font-family:var(--font-display);font-size:1.7rem;font-weight:700;margin:0 0 6px;text-wrap:balance;}
+h2.section-title{font-family:var(--font-display);font-size:1.05rem;font-weight:700;margin:0 0 4px;}
+.section-kicker{font-family:var(--font-mono);font-size:0.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--agent);margin:0 0 4px;font-weight:600;}
+.sub{color:var(--text-dim);font-size:0.95rem;max-width:66ch;line-height:1.55;margin:0 0 16px;}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;min-width:0;}
+code{font-family:var(--font-mono);font-size:0.86em;background:var(--surface-2);padding:1px 5px;border-radius:5px;}
+
+/* why-a-graph */
+.why-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch;}
+@media (max-width:760px){.why-grid{grid-template-columns:1fr;}.why-vs{display:none;}}
+.why-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;}
+.why-card h3{margin:0 0 8px;font-family:var(--font-display);font-size:0.95rem;}
+.why-card p{margin:0;color:var(--text-dim);font-size:0.86rem;line-height:1.5;}
+.why-card.highlight{border-color:var(--agent);background:var(--agent-soft);}
+.why-card.highlight h3{color:var(--agent);}
+.why-vs{display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);color:var(--text-dim);font-size:0.8rem;}
+.mini-flow{display:flex;align-items:center;gap:4px;margin-top:12px;flex-wrap:wrap;font-family:var(--font-mono);font-size:0.72rem;}
+.mini-node{background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:3px 8px;}
+.mini-node.acc{border-color:var(--agent);color:var(--agent);}
+.mini-arrow{color:var(--text-dim);}
+
+/* glossary */
+.glossary{display:flex;flex-direction:column;gap:8px;}
+.glossary-item{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;}
+.glossary-head{
+  width:100%;text-align:left;background:none;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 14px;font-family:var(--font-body);font-size:0.9rem;font-weight:600;color:var(--text);
+}
+.glossary-head .term-code{font-family:var(--font-mono);color:var(--agent);font-weight:600;font-size:0.88rem;}
+.glossary-head .chev{color:var(--text-dim);transition:transform .15s;font-size:0.8rem;}
+.glossary-item.open .chev{transform:rotate(90deg);}
+.glossary-body{
+  max-height:0;overflow:hidden;transition:max-height .2s ease;
+  padding:0 14px;color:var(--text-dim);font-size:0.86rem;line-height:1.55;
+}
+.glossary-item.open .glossary-body{max-height:260px;padding-bottom:13px;}
+
+/* profile */
+.profile-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+@media (max-width:860px){.profile-grid{grid-template-columns:1fr 1fr;}}
+@media (max-width:520px){.profile-grid{grid-template-columns:1fr;}}
+.profile-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 14px;}
+.profile-label{display:block;font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--agent);margin-bottom:6px;font-weight:600;}
+.profile-card p{margin:0;font-size:0.82rem;line-height:1.45;color:var(--text-dim);}
+
+/* scenario chips + custom input */
+.scenario-row{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 14px;}
+.chip{font-family:var(--font-body);font-size:0.85rem;padding:9px 16px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;transition:border-color .15s,background .15s;}
+.chip.active{border-color:var(--agent);background:var(--agent-soft);color:var(--agent);font-weight:600;}
+.chip.active.failure{border-color:var(--error);background:var(--error-soft);color:var(--error);}
+.chip:hover{border-color:var(--agent);}
+.custom-box{display:none;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.custom-box.show{display:flex;}
+.custom-box input[type=text]{
+  flex:1;min-width:220px;font-family:var(--font-body);font-size:0.9rem;
+  padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);
+}
+.custom-box button{
+  font-family:var(--font-body);font-weight:600;font-size:0.88rem;padding:10px 18px;border-radius:10px;
+  border:1px solid var(--agent);background:var(--agent);color:#fff;cursor:pointer;
+}
+.custom-note{font-size:0.78rem;color:var(--text-dim);margin:-6px 0 14px;max-width:62ch;line-height:1.5;}
+
+.stage{display:grid;grid-template-columns:1.05fr 1fr;gap:18px;}
+@media (max-width:860px){.stage{grid-template-columns:1fr;}}
+.panel h2.ph{font-family:var(--font-display);font-size:0.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin:0 0 14px;font-weight:600;}
+
+svg{display:block;width:100%;height:auto;}
+.node rect, .node polygon{fill:var(--surface-2);stroke:var(--border);stroke-width:1.5;transition:fill .25s,stroke .25s;}
+.node text{fill:var(--text);font-family:var(--font-body);font-weight:600;}
+.node .sub-label{fill:var(--text-dim);font-weight:400;font-family:var(--font-mono);}
+.node.active rect, .node.active polygon{stroke-width:2.5;}
+.node.agent.active rect{fill:var(--agent-soft);stroke:var(--agent);}
+.node.tools.active rect{fill:var(--tool-soft);stroke:var(--tool);}
+.node.start.active rect, .node.end.active rect{fill:var(--end-soft);stroke:var(--end);}
+.node.decision.active polygon{stroke:var(--agent);}
+.node.agent.error rect{fill:var(--error-soft);stroke:var(--error);}
+
+.edge{fill:none;stroke:var(--border);stroke-width:2;}
+.edge.flow{stroke:var(--agent);stroke-width:2.5;stroke-dasharray:7 6;animation:dash .6s linear infinite;}
+.edge.flow.tool{stroke:var(--tool);}
+.edge.flow.error{stroke:var(--error);}
+@keyframes dash{to{stroke-dashoffset:-26;}}
+.edge-label{font-family:var(--font-mono);font-size:11px;fill:var(--text-dim);}
+.edge-label.on{fill:var(--agent);font-weight:600;}
+.edge-label.on.tool{fill:var(--tool);}
+marker path{fill:var(--border);}
+.arrowhead-active path{fill:var(--agent);}
+.arrowhead-tool path{fill:var(--tool);}
+.arrowhead-error path{fill:var(--error);}
+
+.state-list{display:flex;flex-direction:column;gap:10px;min-height:360px;}
+.msg{border-radius:12px;padding:10px 13px;font-size:0.86rem;line-height:1.45;border:1px solid transparent;animation:rise .25s ease both;}
+@keyframes rise{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+.msg .role{font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px;opacity:.75;}
+.msg.user{background:var(--user-soft);color:var(--user);}
+.msg.user .body{color:var(--text);}
+.msg.ai{background:var(--agent-soft);color:var(--agent);}
+.msg.ai .body{color:var(--text);}
+.msg.tool{background:var(--tool-soft);color:var(--tool);}
+.msg.tool .body{color:var(--text);font-family:var(--font-mono);}
+.msg.error{background:var(--error-soft);color:var(--error);}
+.msg.error .body{color:var(--text);}
+.msg .body{font-weight:400;}
+.toolcall-chip{display:inline-block;margin-top:6px;font-family:var(--font-mono);font-size:0.78rem;background:var(--surface);border:1px solid var(--tool);color:var(--tool);padding:3px 9px;border-radius:8px;}
+.thinking{display:inline-flex;gap:4px;align-items:center;color:var(--text-dim);font-size:0.85rem;font-style:italic;}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--text-dim);animation:blink 1s infinite;}
+.dot:nth-child(2){animation-delay:.2s;}
+.dot:nth-child(3){animation-delay:.4s;}
+@keyframes blink{0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+.empty-state{color:var(--text-dim);font-size:0.88rem;font-style:italic;}
+
+.commentary{margin-top:18px;display:grid;grid-template-columns:1.1fr 1fr;gap:18px;}
+@media (max-width:860px){.commentary{grid-template-columns:1fr;}}
+.explain h3{font-family:var(--font-display);font-size:1.05rem;margin:0 0 8px;}
+.explain p{margin:0;color:var(--text-dim);font-size:0.92rem;line-height:1.55;}
+.code-box{background:var(--code-bg);color:var(--code-text);border-radius:10px;padding:14px 16px;font-family:var(--font-mono);font-size:0.78rem;line-height:1.6;overflow-x:auto;white-space:pre;margin:0 18px 18px;}
+.code-file{font-family:var(--font-mono);font-size:0.72rem;color:var(--text-dim);margin-bottom:8px;display:block;padding:18px 18px 0;}
+
+.controls{display:flex;align-items:center;gap:14px;margin-top:22px;flex-wrap:wrap;}
+button.navbtn{font-family:var(--font-body);font-size:0.88rem;font-weight:600;padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;}
+button.navbtn:disabled{opacity:.4;cursor:default;}
+button.navbtn.primary{background:var(--agent);border-color:var(--agent);color:#fff;}
+.dots{display:flex;gap:6px;flex-wrap:wrap;}
+.step-dot{width:9px;height:9px;border-radius:50%;background:var(--border);cursor:pointer;border:none;padding:0;}
+.step-dot.done{background:var(--agent);}
+.step-dot.current{background:var(--agent);box-shadow:0 0 0 3px var(--agent-soft);}
+.step-count{font-family:var(--font-mono);font-size:0.8rem;color:var(--text-dim);margin-left:auto;}
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+
+<div class="wrap">
+  <header>
+    <h1>LangGraph, from first principles</h1>
+    <p class="sub">Not just "here's what this one agent does" &mdash; the vocabulary, the motivation, and the mechanics, built up from the same small example (Module 1's calculator agent) so the ideas generalize past it.</p>
+  </header>
+
+  <section id="why">
+    <p class="section-kicker">1. Why a graph at all</p>
+    <h2 class="section-title">A single prompt can't loop. An agent needs to.</h2>
+    <p class="sub">A plain LLM call is a one-shot: text in, text out, done. The moment you need the model to check something, act, look at the result, and decide again &mdash; you need a loop with a decision in it. That's all a LangGraph graph is: nodes you write, connected by edges that say "go here next," with one edge allowed to ask "which next?" based on what just happened.</p>
+    <div class="why-grid">
+      <div class="why-card">
+        <h3>Single LLM call</h3>
+        <p>Prompt in &rarr; text out. If the model needs to do arithmetic, it has to "mentally" guess &mdash; there's no way for it to pause, compute something exactly, and resume with the real number.</p>
+        <div class="mini-flow">
+          <span class="mini-node">prompt</span><span class="mini-arrow">&rarr;</span><span class="mini-node">LLM</span><span class="mini-arrow">&rarr;</span><span class="mini-node">text</span>
+        </div>
+      </div>
+      <div class="why-vs">vs.</div>
+      <div class="why-card highlight">
+        <h3>LangGraph agent</h3>
+        <p>The model can request a real tool call, get the exact result back, and decide again &mdash; as many times as it needs &mdash; before answering. The loop is the point.</p>
+        <div class="mini-flow">
+          <span class="mini-node acc">agent</span><span class="mini-arrow">&rarr;</span><span class="mini-node">decide?</span><span class="mini-arrow">&rarr;</span><span class="mini-node acc">tools</span><span class="mini-arrow">&#8630;</span><span class="mini-node acc">agent</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="skeleton">
+    <p class="section-kicker">2. The same skeleton, every time</p>
+    <h2 class="section-title">From one node to a loop</h2>
+    <p class="sub">Module 0's hello-world graph and Module 1's calculator agent are built from the exact same parts &mdash; <code>StateGraph</code>, nodes, edges. Module 1 just adds one branch and one loop-back edge. Every bigger agent you'll meet later (multi-tool, multi-agent, human-in-the-loop) is this same skeleton with more nodes and edges added on top &mdash; nothing about the primitives changes.</p>
+    <div class="why-grid">
+      <div class="why-card">
+        <h3>Module 0 &mdash; one node, no choices</h3>
+        <p>START always goes to the one node, which always goes to END. No branching, no memory of tool use, because there's no tool.</p>
+        <div class="mini-flow">
+          <span class="mini-node">START</span><span class="mini-arrow">&rarr;</span><span class="mini-node acc">chat</span><span class="mini-arrow">&rarr;</span><span class="mini-node">END</span>
+        </div>
+      </div>
+      <div class="why-vs">+</div>
+      <div class="why-card highlight">
+        <h3>Module 1 &mdash; a decision and a loop</h3>
+        <p>Same START/END ends. One extra node (tools), one conditional edge (a decision), one edge back (the loop). That's the entire delta.</p>
+        <div class="mini-flow">
+          <span class="mini-node">START</span><span class="mini-arrow">&rarr;</span><span class="mini-node acc">agent</span><span class="mini-arrow">&rarr;</span><span class="mini-node">decide</span><span class="mini-arrow">&rarr;</span><span class="mini-node acc">tools</span><span class="mini-arrow">&#8630;</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="glossary">
+    <p class="section-kicker">3. Vocabulary</p>
+    <h2 class="section-title">The seven words you need</h2>
+    <p class="sub">Click each one open. Every definition points at the exact line in Module 1's code that is that concept.</p>
+    <div class="glossary" id="glossaryList"></div>
+  </section>
+
+  <section id="profile">
+    <p class="section-kicker">4. This specific agent</p>
+    <h2 class="section-title">Before the trace &mdash; the four questions any agent explainer should answer</h2>
+    <div class="profile-grid">
+      <div class="profile-card">
+        <span class="profile-label">Reasoning</span>
+        <p>Happens entirely inside the Groq-hosted LLM at <code>llm_with_tools.invoke()</code>. LangGraph does no reasoning itself &mdash; it only routes based on whether the LLM's response contains <code>tool_calls</code>.</p>
+      </div>
+      <div class="profile-card">
+        <span class="profile-label">Memory</span>
+        <p>None persisted. <code>state["messages"]</code> is working memory for one <code>invoke()</code> call only &mdash; no checkpointer is attached at <code>.compile()</code>. Streamlit fakes cross-turn history by resending the full list each time; refresh the page and it's gone.</p>
+      </div>
+      <div class="profile-card">
+        <span class="profile-label">Tools</span>
+        <p>One: <code>calculator</code>, a <code>numexpr</code>-based arithmetic evaluator bound via <code>bind_tools</code>. No search, no retrieval.</p>
+      </div>
+      <div class="profile-card">
+        <span class="profile-label">Goal &amp; end criteria</span>
+        <p>Answer the question, routing arithmetic through the real tool. Halts when <code>agent_node</code> returns an AIMessage with an <em>empty</em> <code>tool_calls</code> list &mdash; no max-loop cap exists yet.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="trace">
+    <p class="section-kicker">5. Watch it run</p>
+    <h2 class="section-title">State, nodes and edges, step by step</h2>
+    <p class="sub">Three scenarios: the tool gets used, the tool is skipped because nothing needs it, and a real failure case you'd actually hit (a model with no tool-calling support). Then try your own question below.</p>
+
+    <div class="scenario-row" id="scenarioRow"></div>
+    <div class="custom-box" id="customBox">
+      <input type="text" id="customInput" placeholder="Type a question, e.g. &quot;What's 47 plus 18, minus 5?&quot;">
+      <button id="customRun">Run it through the graph</button>
+    </div>
+    <p class="custom-note" id="customNote" style="display:none;">This sandbox can't call the real Groq API inside an artifact &mdash; so a tiny router here (not an LLM) decides whether your text contains a computable expression, the same way <code>tools_condition</code> decides based on <code>tool_calls</code>. The <em>routing logic shown is real</em>; the "model response" text is simulated.</p>
+
+    <div class="stage">
+      <div class="panel">
+        <h2 class="ph">The graph</h2>
+        <svg viewBox="0 0 560 420" id="graphSvg">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z"/></marker>
+            <marker id="arrow-active" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto" class="arrowhead-active"><path d="M0,0 L8,4 L0,8 Z"/></marker>
+            <marker id="arrow-tool" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto" class="arrowhead-tool"><path d="M0,0 L8,4 L0,8 Z"/></marker>
+            <marker id="arrow-error" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto" class="arrowhead-error"><path d="M0,0 L8,4 L0,8 Z"/></marker>
+          </defs>
+          <path id="e-start-agent" class="edge" d="M300,50 L300,98" marker-end="url(#arrow)"/>
+          <path id="e-agent-decision" class="edge" d="M300,170 L300,188" marker-end="url(#arrow)"/>
+          <path id="e-decision-tools" class="edge" d="M230,230 C180,260 160,295 150,328" marker-end="url(#arrow)"/>
+          <path id="e-decision-end" class="edge" d="M370,230 C425,262 452,296 462,328" marker-end="url(#arrow)"/>
+          <path id="e-tools-agent" class="edge" d="M108,330 C15,300 15,160 168,138" marker-end="url(#arrow)"/>
+          <text class="edge-label" id="label-tools" x="135" y="300">tool_calls present</text>
+          <text class="edge-label" id="label-end" x="400" y="300">no tool_calls</text>
+          <text class="edge-label" id="label-loop" x="15" y="235" transform="rotate(-90 15 235)">ToolMessage appended</text>
+          <g class="node start" id="node-start"><rect x="230" y="10" width="140" height="40" rx="20"/><text x="300" y="34" text-anchor="middle" font-size="13">START</text></g>
+          <g class="node agent" id="node-agent"><rect x="170" y="100" width="260" height="70" rx="14"/><text x="300" y="130" text-anchor="middle" font-size="14">agent node</text><text class="sub-label" x="300" y="150" text-anchor="middle" font-size="11">llm_with_tools.invoke(messages)</text></g>
+          <g class="node decision" id="node-decision"><polygon points="300,190 370,230 300,270 230,230"/><text x="300" y="226" text-anchor="middle" font-size="11">tools_condition</text><text class="sub-label" x="300" y="241" text-anchor="middle" font-size="10">tool_calls?</text></g>
+          <g class="node tools" id="node-tools"><rect x="40" y="330" width="220" height="70" rx="14"/><text x="150" y="360" text-anchor="middle" font-size="14">tools node</text><text class="sub-label" x="150" y="380" text-anchor="middle" font-size="11">ToolNode([calculator])</text></g>
+          <g class="node end" id="node-end"><rect x="400" y="330" width="140" height="40" rx="20"/><text x="470" y="354" text-anchor="middle" font-size="13">END</text></g>
+        </svg>
+      </div>
+      <div class="panel">
+        <h2 class="ph">state["messages"]</h2>
+        <div class="state-list" id="stateList"></div>
+      </div>
+    </div>
+
+    <div class="commentary">
+      <div class="explain panel">
+        <h3 id="explainTitle"></h3>
+        <p id="explainBody"></p>
+      </div>
+      <div class="panel" style="padding:0;overflow:hidden;">
+        <span class="code-file" id="codeFile"></span>
+        <div class="code-box" id="codeBox"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="navbtn" id="prevBtn">Back</button>
+      <button class="navbtn primary" id="nextBtn">Next</button>
+      <div class="dots" id="dots"></div>
+      <span class="step-count" id="stepCount"></span>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  function msg(role, body, extra){ extra = extra || {}; return Object.assign({role, body}, extra); }
+
+  // ---------- glossary ----------
+  var glossaryTerms = [
+    {term:"State", def:"The shape of data flowing through the graph, defined once as a TypedDict. Module 1's is just one field: messages. Every node reads it and returns an update to it.", code:"class State(TypedDict):\n    messages: Annotated[list, add_messages]"},
+    {term:"Reducer", def:"How a field's updates combine across steps. The default is overwrite. add_messages instead appends \u2014 without it, every node's return value would replace the whole conversation instead of growing it.", code:"messages: Annotated[list, add_messages]\n# node returns {\"messages\": [response]}\n# -> appended, not replaced"},
+    {term:"Node", def:"A plain function that takes state in and returns a partial state update. agent_node is one you wrote; the tools node (ToolNode) is a prebuilt one LangGraph ships.", code:"def agent_node(state):\n    response = llm_with_tools.invoke(state[\"messages\"])\n    return {\"messages\": [response]}"},
+    {term:"Edge", def:"A fixed connection: always go from A to B next, no logic attached.", code:"graph.add_edge(\"tools\", \"agent\")"},
+    {term:"Conditional edge", def:"An edge with a routing function attached. The function looks at state and returns which node to go to next \u2014 this is how branching and looping happen.", code:"graph.add_conditional_edges(\"agent\", tools_condition)\n# -> \"tools\" or END"},
+    {term:"START / END", def:"Not nodes you write \u2014 sentinel markers for where execution enters and exits the graph.", code:"graph.add_edge(START, \"agent\")"},
+    {term:"Compile &amp; invoke", def:"StateGraph(State) is the builder you add nodes/edges to. .compile() turns it into a runnable graph; .invoke(initial_state) runs it to completion, looping through nodes as the edges direct.", code:"app = graph.compile()\nresult = app.invoke({\"messages\": [...]})"}
+  ];
+  var glossaryList = document.getElementById("glossaryList");
+  glossaryTerms.forEach(function(g){
+    var item = document.createElement("div");
+    item.className = "glossary-item";
+    item.innerHTML =
+      '<button class="glossary-head"><span class="term-code">' + g.term + '</span><span class="chev">\u203A</span></button>' +
+      '<div class="glossary-body"><p style="margin:0 0 8px;">' + g.def + '</p>' +
+      '<div class="code-box" style="margin:0;">' + g.code.replace(/</g,"&lt;") + '</div></div>';
+    item.querySelector(".glossary-head").addEventListener("click", function(){
+      item.classList.toggle("open");
+    });
+    glossaryList.appendChild(item);
+  });
+
+  // ---------- safe arithmetic parser (stands in for numexpr, in-browser) ----------
+  function extractExpression(text){
+    var re = /-?\d+(\.\d+)?(\s*[-+*/]\s*-?\d+(\.\d+)?)+/;
+    var m = text.match(re);
+    return m ? m[0].replace(/\s+/g,"") : null;
+  }
+  function safeEvalExpr(expr){
+    var pos = 0;
+    function number(){
+      var start = pos;
+      if(expr[pos] === "-") pos++;
+      while(pos < expr.length && /[0-9.]/.test(expr[pos])) pos++;
+      return parseFloat(expr.slice(start, pos));
+    }
+    function factor(){
+      if(expr[pos] === "("){ pos++; var v = addsub(); if(expr[pos] === ")") pos++; return v; }
+      return number();
+    }
+    function term(){
+      var v = factor();
+      while(expr[pos] === "*" || expr[pos] === "/"){
+        var op = expr[pos]; pos++;
+        var rhs = factor();
+        v = op === "*" ? v * rhs : v / rhs;
+      }
+      return v;
+    }
+    function addsub(){
+      var v = term();
+      while(expr[pos] === "+" || expr[pos] === "-"){
+        var op = expr[pos]; pos++;
+        var rhs = term();
+        v = op === "+" ? v + rhs : v - rhs;
+      }
+      return v;
+    }
+    return addsub();
+  }
+  function formatResult(n){
+    if(Number.isInteger(n)) return String(n);
+    return String(Math.round(n * 10000) / 10000);
+  }
+
+  // ---------- step builders ----------
+  function mathSteps(question, expr, resultStr){
+    return [
+      {nodes:[],edges:[],decision:null,messages:[],
+        title:"Nothing has run yet",
+        body:"About to call app.invoke({\"messages\": [...]}) with: " + question,
+        file:"modules/01_single_tool_agent/app.py", code:"result = app.invoke({\"messages\": st.session_state.messages})"},
+      {nodes:["start"],edges:[{id:"e-start-agent"}],decision:null,
+        messages:[msg("user", question)],
+        title:"The message enters the graph",
+        body:"Execution always begins at START, which routes straight to the only entry point, \u201cagent.\u201d",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_edge(START, \"agent\")"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("ai", null, {thinking:true})],
+        title:"agent node: the LLM is called",
+        body:"agent_node prepends the system prompt if missing, then calls llm_with_tools.invoke(messages) \u2014 the model bound to the calculator tool.",
+        file:"modules/01_single_tool_agent/graph.py", code:"response = llm_with_tools.invoke(messages)"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"})],
+        title:"The model asks for the calculator, not an answer",
+        body:"bind_tools only told the model the tool exists. The response has empty content but a populated tool_calls field: a structured request, not text.",
+        file:"modules/01_single_tool_agent/graph.py", code:"llm_with_tools = llm.bind_tools(TOOLS)\n# response.tool_calls == [{\"name\":\"calculator\",\n#   \"args\":{\"expression\":\"" + expr + "\"}}]"},
+      {nodes:["decision"],edges:[{id:"e-agent-decision"}],decision:"tools",
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"})],
+        title:"tools_condition checks the last message",
+        body:"An if/else dressed up as a graph edge: does the last AIMessage have tool_calls? Yes \u2192 route to \u201ctools\u201d instead of ending.",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_conditional_edges(\"agent\", tools_condition)"},
+      {nodes:["tools"],edges:[{id:"e-decision-tools",cls:"tool"}],decision:"tools",
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"}), msg("tool", resultStr)],
+        title:"tools node: the real calculator runs",
+        body:"ToolNode executes the real Python function \u2014 here the expression " + expr + " is evaluated exactly, not guessed. The result comes back as a ToolMessage tagged with the tool_call's id.",
+        file:"modules/01_single_tool_agent/graph.py", code:"@tool\ndef calculator(expression: str) -> str:\n    return str(numexpr.evaluate(expression).item())"},
+      {nodes:["tools"],edges:[{id:"e-tools-agent",cls:"tool"}],decision:"tools",
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"}), msg("tool", resultStr)],
+        title:"The loop edge sends control back to agent",
+        body:"tools always routes back to agent \u2014 this is what makes the graph agentic rather than a one-shot pipeline.",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_edge(\"tools\", \"agent\")"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"}), msg("tool", resultStr), msg("ai", null, {thinking:true})],
+        title:"agent node runs again \u2014 now with the real answer in hand",
+        body:"Same function as before, but state[\"messages\"] now includes the ToolMessage with the real result in it.",
+        file:"modules/01_single_tool_agent/graph.py", code:"response = llm_with_tools.invoke(messages)  # 2nd call"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"}), msg("tool", resultStr), msg("ai", expr + " is " + resultStr + ".")],
+        title:"This time the model answers in plain text",
+        body:"No tool_calls this time \u2014 a normal AIMessage with content. add_messages appended this onto the list instead of replacing it.",
+        file:"modules/01_single_tool_agent/graph.py", code:"messages: Annotated[list, add_messages]"},
+      {nodes:["decision"],edges:[{id:"e-agent-decision"}],decision:"end",
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"}), msg("tool", resultStr), msg("ai", expr + " is " + resultStr + ".")],
+        title:"tools_condition checks again \u2014 no tool_calls this time",
+        body:"Same function, different answer: no tool_calls on the latest message, so the edge routes to END instead of looping back.",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_conditional_edges(\"agent\", tools_condition)"},
+      {nodes:["end"],edges:[{id:"e-decision-end"}],decision:"end",
+        messages:[msg("user", question), msg("ai", "(no text \u2014 model requests a tool instead)", {toolCall:"calculator(expression='" + expr + "')"}), msg("tool", resultStr), msg("ai", expr + " is " + resultStr + ".")],
+        title:"END \u2014 app.invoke() returns the final state",
+        body:"Streamlit shows the final text and separately rebuilds the \u201cTool calls made\u201d trace by matching tool_calls to ToolMessages.",
+        file:"modules/01_single_tool_agent/app.py", code:"response = full_messages[-1].content\nst.write(response)"}
+    ];
+  }
+
+  function chatSteps(question, reply){
+    return [
+      {nodes:[],edges:[],decision:null,messages:[],
+        title:"Nothing has run yet",
+        body:"Same graph, a question with nothing to compute. Watch how much shorter the path is.",
+        file:"modules/01_single_tool_agent/app.py", code:"result = app.invoke({\"messages\": st.session_state.messages})"},
+      {nodes:["start"],edges:[{id:"e-start-agent"}],decision:null,
+        messages:[msg("user", question)],
+        title:"The message enters at START",
+        body:"Same entry point as always \u2014 no branching happens until after the model responds.",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_edge(START, \"agent\")"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("ai", reply)],
+        title:"The model answers directly \u2014 no tool_calls at all",
+        body:"The system prompt only forces tool use for arithmetic. There's nothing to calculate, so the response has content and an empty tool_calls list.",
+        file:"modules/01_single_tool_agent/graph.py", code:"response = llm_with_tools.invoke(messages)\n# response.tool_calls == []"},
+      {nodes:["decision"],edges:[{id:"e-agent-decision"}],decision:"end",
+        messages:[msg("user", question), msg("ai", reply)],
+        title:"tools_condition sends it straight to END",
+        body:"No tool_calls on the last message, so the conditional edge skips \u201ctools\u201d entirely \u2014 the loop never has to run.",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_conditional_edges(\"agent\", tools_condition)"},
+      {nodes:["end"],edges:[{id:"e-decision-end"}],decision:"end",
+        messages:[msg("user", question), msg("ai", reply)],
+        title:"END \u2014 one agent call, zero tool calls",
+        body:"No ToolMessage exists in this run, so the trace-matching code finds nothing, and the \u201cTool calls made\u201d expander simply doesn't render.",
+        file:"modules/01_single_tool_agent/app.py", code:"if trace:\n    with st.expander(...):\n        ...\n# trace == [] here"}
+    ];
+  }
+
+  function failureSteps(){
+    var question = "What is 50 * 12?";
+    return [
+      {nodes:[],edges:[],decision:null,messages:[],
+        title:"Nothing has run yet",
+        body:"A real failure mode, not a hypothetical \u2014 this exact error happened while building this module: the user picked a Groq model that doesn't support tool calling at all.",
+        file:"modules/01_single_tool_agent/app.py", code:"app = build_graph(model=model, api_key=api_key)"},
+      {nodes:["start"],edges:[{id:"e-start-agent"}],decision:null,
+        messages:[msg("user", question)],
+        title:"The message enters the graph as normal",
+        body:"Nothing looks different yet \u2014 START routes to agent exactly as in every other run.",
+        file:"modules/01_single_tool_agent/graph.py", code:"graph.add_edge(START, \"agent\")"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("ai", null, {thinking:true})],
+        title:"agent node calls the LLM \u2014 but this model can't accept bound tools",
+        body:"llm_with_tools.invoke() sends the request to Groq with the calculator tool attached. The selected model simply doesn't support tool calling, so the Groq API itself rejects the request.",
+        file:"modules/01_single_tool_agent/graph.py", code:"response = llm_with_tools.invoke(messages)"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("error", "groq.BadRequestError: 400 \u2014 \u2018tool calling\u2019 is not supported with this model")],
+        title:"The graph raises, mid-node \u2014 it never reaches the decision",
+        body:"This isn't tools_condition routing somewhere unexpected \u2014 the agent node itself throws an exception. No AIMessage is ever produced, so there's nothing for tools_condition to even inspect.",
+        file:"/tmp/streamlit_module01.log", code:"groq.BadRequestError: Error code: 400 - {'error':\n {'message': '\u2018tool calling\u2019 is not supported\n  with this model', ...}}"},
+      {nodes:["agent"],edges:[],decision:null,
+        messages:[msg("user", question), msg("error", "groq.BadRequestError: 400 \u2014 \u2018tool calling\u2019 is not supported with this model")],
+        title:"app.py catches it outside the graph, not inside",
+        body:"LangGraph has no retry/fallback here \u2014 the try/except lives in the Streamlit app around app.invoke(). It shows a friendly error and pops the just-added user turn so the next attempt starts clean.",
+        file:"modules/01_single_tool_agent/app.py", code:"try:\n    result = app.invoke({\"messages\": st.session_state.messages})\nexcept Exception as e:\n    st.error(f\"This model couldn't run the agent...\")\n    st.session_state.messages.pop()\n    st.stop()"}
+    ];
+  }
+
+  // ---------- static scenarios ----------
+  var scenarioMath = {label:"Math question", tag:"math", example:'"What is 123 * 9?"',
+    steps: mathSteps('"What is 123 * 9?"', "123*9", "1107")};
+  var scenarioChat = {label:"Casual greeting", tag:"chat", example:'"Hi, how are you?"',
+    steps: chatSteps('"Hi, how are you?"', "Hi there! I'm doing well, thanks for asking \u2014 how can I help?")};
+  var scenarioFailure = {label:"Unsupported model", tag:"failure", example:"(a real error you'd actually hit)",
+    steps: failureSteps()};
+
+  var tabs = [scenarioMath, scenarioChat, scenarioFailure, {label:"Try your own", tag:"custom"}];
+  var tabIdx = 0;
+  var stepIdx = 0;
+  var customScenario = null;
+
+  var els = {
+    scenarioRow: document.getElementById("scenarioRow"),
+    customBox: document.getElementById("customBox"),
+    customInput: document.getElementById("customInput"),
+    customRun: document.getElementById("customRun"),
+    customNote: document.getElementById("customNote"),
+    stateList: document.getElementById("stateList"),
+    explainTitle: document.getElementById("explainTitle"),
+    explainBody: document.getElementById("explainBody"),
+    codeFile: document.getElementById("codeFile"),
+    codeBox: document.getElementById("codeBox"),
+    prevBtn: document.getElementById("prevBtn"),
+    nextBtn: document.getElementById("nextBtn"),
+    dots: document.getElementById("dots"),
+    stepCount: document.getElementById("stepCount")
+  };
+
+  var allNodeIds = ["start","agent","decision","tools","end"];
+  var allEdgeIds = ["e-start-agent","e-agent-decision","e-decision-tools","e-decision-end","e-tools-agent"];
+
+  function currentSteps(){
+    if(tabs[tabIdx].tag === "custom") return customScenario ? customScenario.steps : null;
+    return tabs[tabIdx].steps;
+  }
+
+  function renderChips(){
+    els.scenarioRow.innerHTML = "";
+    tabs.forEach(function(sc, i){
+      var btn = document.createElement("button");
+      var cls = "chip" + (i === tabIdx ? " active" : "") + (sc.tag === "failure" && i === tabIdx ? " failure" : "");
+      btn.className = cls;
+      btn.textContent = sc.tag === "custom" ? sc.label : (sc.label + " \u2014 " + sc.example);
+      btn.addEventListener("click", function(){
+        tabIdx = i; stepIdx = 0;
+        renderChips();
+        els.customBox.classList.toggle("show", sc.tag === "custom");
+        els.customNote.style.display = sc.tag === "custom" ? "block" : "none";
+        renderStep();
+      });
+      els.scenarioRow.appendChild(btn);
+    });
+  }
+
+  els.customRun.addEventListener("click", function(){
+    var text = els.customInput.value.trim();
+    if(!text) return;
+    var expr = extractExpression(text);
+    if(expr){
+      var result;
+      try{ result = formatResult(safeEvalExpr(expr)); } catch(e){ result = "error"; }
+      customScenario = {steps: mathSteps('"' + text + '"', expr, result)};
+    } else {
+      var reply = "Thanks for the message \u2014 nothing here needs a calculation, so I can just respond directly.";
+      customScenario = {steps: chatSteps('"' + text + '"', reply)};
+    }
+    stepIdx = 0;
+    renderStep();
+  });
+  els.customInput.addEventListener("keydown", function(e){
+    if(e.key === "Enter") els.customRun.click();
+  });
+
+  function renderDots(){
+    var steps = currentSteps();
+    els.dots.innerHTML = "";
+    if(!steps){ els.stepCount.textContent = ""; return; }
+    steps.forEach(function(_, i){
+      var b = document.createElement("button");
+      b.className = "step-dot" + (i < stepIdx ? " done" : "") + (i === stepIdx ? " current" : "");
+      b.setAttribute("aria-label", "Go to step " + (i+1));
+      b.addEventListener("click", function(){ stepIdx = i; renderStep(); });
+      els.dots.appendChild(b);
+    });
+    els.stepCount.textContent = "Step " + (stepIdx+1) + " / " + steps.length;
+  }
+
+  function renderGraph(step){
+    allNodeIds.forEach(function(id){
+      var el = document.getElementById("node-" + id);
+      el.classList.toggle("active", step.nodes.indexOf(id) !== -1);
+      el.classList.toggle("error", !!step.errorNode && id === "agent" && step.nodes.indexOf(id) !== -1 && step.messages.some(function(m){return m.role==="error";}));
+    });
+    allEdgeIds.forEach(function(id){
+      var el = document.getElementById(id);
+      el.classList.remove("flow","tool","error");
+      el.setAttribute("marker-end", "url(#arrow)");
+    });
+    (step.edges || []).forEach(function(e){
+      var el = document.getElementById(e.id);
+      el.classList.add("flow");
+      if(e.cls === "tool"){ el.classList.add("tool"); el.setAttribute("marker-end", "url(#arrow-tool)"); }
+      else { el.setAttribute("marker-end", "url(#arrow-active)"); }
+    });
+    var labelTools = document.getElementById("label-tools");
+    var labelEnd = document.getElementById("label-end");
+    labelTools.classList.toggle("on", step.decision === "tools");
+    labelTools.classList.toggle("tool", step.decision === "tools");
+    labelEnd.classList.toggle("on", step.decision === "end");
+  }
+
+  function renderMessages(messages){
+    els.stateList.innerHTML = "";
+    if(!messages.length){
+      var empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "state[\"messages\"] is empty \u2014 nothing has been invoked yet.";
+      els.stateList.appendChild(empty);
+      return;
+    }
+    messages.forEach(function(m){
+      var div = document.createElement("div");
+      div.className = "msg " + m.role;
+      var roleLabel = m.role === "user" ? "Human" : m.role === "ai" ? "AIMessage" : m.role === "tool" ? "ToolMessage" : "Exception (not a message)";
+      var html = '<span class="role">' + roleLabel + '</span>';
+      if(m.thinking){
+        html += '<span class="thinking">thinking<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+      } else {
+        html += '<span class="body">' + (m.body || "") + '</span>';
+      }
+      if(m.toolCall) html += '<span class="toolcall-chip">tool_call \u2192 ' + m.toolCall + '</span>';
+      div.innerHTML = html;
+      els.stateList.appendChild(div);
+    });
+  }
+
+  function renderStep(){
+    var steps = currentSteps();
+    if(!steps){
+      allNodeIds.forEach(function(id){ document.getElementById("node-" + id).classList.remove("active","error"); });
+      allEdgeIds.forEach(function(id){ var el = document.getElementById(id); el.classList.remove("flow","tool","error"); });
+      renderMessages([]);
+      els.explainTitle.textContent = "Type a question above";
+      els.explainBody.textContent = "Try something with numbers in it, and something without \u2014 then step through to see the routing decision each time.";
+      els.codeFile.textContent = "";
+      els.codeBox.textContent = "";
+      els.prevBtn.disabled = true; els.nextBtn.disabled = true;
+      renderDots();
+      return;
+    }
+    var step = steps[stepIdx];
+    renderGraph(step);
+    renderMessages(step.messages);
+    els.explainTitle.textContent = step.title;
+    els.explainBody.textContent = step.body;
+    els.codeFile.textContent = step.file;
+    els.codeBox.textContent = step.code;
+    els.prevBtn.disabled = stepIdx === 0;
+    els.nextBtn.disabled = stepIdx === steps.length - 1;
+    els.nextBtn.textContent = stepIdx === steps.length - 1 ? "Done" : "Next";
+    renderDots();
+  }
+
+  els.prevBtn.addEventListener("click", function(){ if(stepIdx > 0){ stepIdx--; renderStep(); } });
+  els.nextBtn.addEventListener("click", function(){
+    var steps = currentSteps();
+    if(steps && stepIdx < steps.length - 1){ stepIdx++; renderStep(); }
+  });
+  document.addEventListener("keydown", function(e){
+    if(e.key === "ArrowRight") els.nextBtn.click();
+    if(e.key === "ArrowLeft") els.prevBtn.click();
+  });
+
+  renderChips();
+  renderStep();
+})();
+</script>

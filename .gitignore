@@ -4,6 +4,7 @@ __pycache__/
 .env
 mlruns/
 *.db
+dashboard/data/agent_configs.json
 .DS_Store
 .streamlit/secrets.toml
 .claude/launch.json
