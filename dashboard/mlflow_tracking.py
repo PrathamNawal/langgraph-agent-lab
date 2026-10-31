@@ -1,9 +1,14 @@
-"""MLflow-backed experiment tracking for the calculator-agent dashboard.
+"""MLflow-backed experiment tracking for the Module 2 multi-tool agent dashboard.
 
 One MLflow run per judged eval question, tagged with the config version and
 judge type (human/agent), so real before/after comparison across config
 deploys is a group-by away - not a hand-rolled CSV someone has to remember
 to update.
+
+Uses its own tracking DB and experiment name, separate from Module 1's
+calculator-agent dashboard data - these are different agents with different
+eval sets, so mixing their runs into one experiment would make comparisons
+meaningless.
 
 Uses the SQLite tracking backend, not the plain filesystem ("file:./mlruns")
 backend - MLflow's filesystem store is in maintenance mode in current
@@ -16,8 +21,8 @@ import os
 import mlflow
 import pandas as pd
 
-TRACKING_DB = os.path.join(os.path.dirname(__file__), "data", "mlflow.db")
-EXPERIMENT_NAME = "langgraph-agent-lab-calculator"
+TRACKING_DB = os.path.join(os.path.dirname(__file__), "data", "mlflow_module02.db")
+EXPERIMENT_NAME = "langgraph-agent-lab-module02"
 
 mlflow.set_tracking_uri(f"sqlite:///{os.path.abspath(TRACKING_DB)}")
 mlflow.set_experiment(EXPERIMENT_NAME)

@@ -6,7 +6,7 @@ mlruns/
 *.db
 *.db-shm
 *.db-wal
-dashboard/data/agent_configs.json
+dashboard/data/agent_configs*.json
 .DS_Store
 .streamlit/secrets.toml
 .claude/launch.json

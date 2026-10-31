@@ -129,13 +129,20 @@ def build_graph(
     api_key: str | None = None,
     system_prompt: str | None = None,
     enabled_tools: list[str] | None = None,
+    memory_window: int | None = None,
     checkpointer: SqliteSaver | None = None,
 ):
     """enabled_tools restricts which of TOOLS get bound (by name) - a dashboard
     lever that didn't exist in Module 1, since there was only ever one tool to
-    enable or disable. checkpointer defaults to the shared on-disk SqliteSaver;
-    pass None explicitly (not omitted) only for throwaway/test graphs that
-    shouldn't touch the real checkpoint file.
+    enable or disable. memory_window, if set, caps how many of the PERSISTED
+    messages get sent to the LLM on each call (a real sliding-window context
+    limit) - note this only trims what the model SEES, not what's stored:
+    the full history still accumulates in the checkpointer regardless, which
+    is what a production memory-window setting actually does (you don't want
+    to lose history on disk just because you shrank the context window).
+    checkpointer defaults to the shared on-disk SqliteSaver; pass None
+    explicitly (not omitted) only for throwaway/test graphs that shouldn't
+    touch the real checkpoint file.
     """
     llm = ChatGroq(model=model, temperature=temperature, api_key=api_key or os.environ.get("GROQ_API_KEY"))
     active_tools = [t for t in TOOLS if enabled_tools is None or t.name in enabled_tools]
@@ -144,8 +151,14 @@ def build_graph(
 
     def agent_node(state: State) -> State:
         messages = state["messages"]
-        if not messages or getattr(messages[0], "type", messages[0].get("role") if isinstance(messages[0], dict) else None) != "system":
+        is_system = lambda m: getattr(m, "type", m.get("role") if isinstance(m, dict) else None) == "system"
+        if not messages or not is_system(messages[0]):
             messages = [{"role": "system", "content": effective_system_prompt}] + list(messages)
+        if memory_window is not None and len(messages) > memory_window + 1:
+            # keep the system message plus only the most recent memory_window
+            # non-system messages - everything older stays persisted in state,
+            # it just isn't sent to the model on this call.
+            messages = [messages[0]] + list(messages)[-memory_window:]
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
