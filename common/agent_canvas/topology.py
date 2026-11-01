@@ -32,6 +32,54 @@ KIND_STYLES = {
 
 _TERMINAL_IDS = {"__start__", "__end__"}
 
+# One-line, kind-level captions explaining *why* a node routes the way it
+# does - keyed the same way KIND_STYLES is, so a later module's new router
+# kind (Module 3's "router", Module 4's "human_approval") gets a caption by
+# adding one entry here, never by special-casing a module name.
+ROUTER_CAPTIONS = {
+    "tool_router": "Routes back to the agent after running whichever tool the model called.",
+    "router": "The model's own output decides which branch runs next - not a fixed rule.",
+    "human_approval": "Execution pauses here until a human approves or rejects the pending action.",
+    "guardrail": "Checks the content against a safety rule before letting it continue.",
+}
+
+
+def describe_state_schema(state_cls):
+    """Introspects a module's State TypedDict (the real class passed to
+    StateGraph(State)) into a list of {field, type, reducer} dicts - e.g.
+    {"field": "messages", "type": "list", "reducer": "add_messages"}.
+
+    Reads the class's own type hints (Annotated[list, add_messages] is how
+    every module already declares its reducers) instead of asking a module to
+    redeclare its state shape a second time just for display."""
+    import typing
+
+    if state_cls is None:
+        return []
+    hints = typing.get_type_hints(state_cls, include_extras=True)
+    fields = []
+    for name, hint in hints.items():
+        reducer = None
+        base_type = hint
+        if typing.get_origin(hint) is typing.Annotated:
+            args = typing.get_args(hint)
+            base_type = args[0]
+            for extra in args[1:]:
+                reducer = getattr(extra, "__name__", str(extra)).lstrip("_")
+        type_name = getattr(base_type, "__name__", str(base_type))
+        fields.append({"field": name, "type": type_name, "reducer": reducer})
+    return fields
+
+
+def describe_checkpointer(checkpointer):
+    """Turns whatever a module passes for its checkpointer (a real
+    SqliteSaver/PostgresSaver instance, or None) into a small display dict -
+    never a guess about whether memory is on, always read off the real object
+    the module actually compiled its graph with."""
+    if checkpointer is None:
+        return {"present": False, "type_name": None}
+    return {"present": True, "type_name": type(checkpointer).__name__}
+
 
 def infer_kind(node_id, node):
     """kind comes from the node's own metadata when the module set one;

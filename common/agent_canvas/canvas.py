@@ -8,12 +8,32 @@ selection so Phase 2 (a side panel driven by each node's own `configurable`
 list) can be added without changing any call site.
 """
 
+import streamlit as st
 from streamlit_flow import streamlit_flow
 from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
 from streamlit_flow.layouts import ManualLayout
 from streamlit_flow.state import StreamlitFlowState
 
-from .topology import build_elements, layered_positions, expand_tool_children
+from .topology import (
+    build_elements,
+    layered_positions,
+    expand_tool_children,
+    describe_state_schema,
+    describe_checkpointer,
+    ROUTER_CAPTIONS,
+)
+
+# A sentinel, not None, so render_graph_canvas can tell "the caller didn't
+# pass checkpointer at all" (don't show the memory badge) apart from "the
+# caller explicitly passed checkpointer=None" (show the badge, as "no
+# memory" - itself real information for a module like Module 1 that
+# genuinely compiles without one).
+_UNSET = object()
+
+BASE_PATTERN_NOTE = (
+    "This agent ↔ tool ↔ conditional-edge loop is the base pattern every later "
+    "module in this curriculum extends - not a one-off diagram."
+)
 
 
 def _to_flow_elements(nodes, edges):
@@ -60,12 +80,59 @@ def _to_flow_elements(nodes, edges):
     return flow_nodes, flow_edges
 
 
-def render_graph_canvas(compiled_graph, key, mode="readonly", height=520):
+def _render_router_captions(nodes):
+    kinds_present = {n["kind"] for n in nodes if not n.get("synthetic")}
+    captions = [ROUTER_CAPTIONS[k] for k in kinds_present if k in ROUTER_CAPTIONS]
+    if captions:
+        for c in captions:
+            st.caption(f"\U0001f500 {c}")
+
+
+def _render_state_and_memory(state_schema, checkpointer):
+    fields = describe_state_schema(state_schema)
+    show_memory = checkpointer is not _UNSET
+    if not fields and not show_memory:
+        return
+
+    col_state, col_memory = st.columns(2)
+    with col_state:
+        if fields:
+            st.markdown("**State** (`state[...]`, passed between every node)")
+            for f in fields:
+                reducer_note = f" — merged via `{f['reducer']}`" if f["reducer"] else " — overwritten each step"
+                st.caption(f"`{f['field']}`: {f['type']}{reducer_note}")
+    with col_memory:
+        if show_memory:
+            info = describe_checkpointer(checkpointer)
+            st.markdown("**Memory** (outside the graph itself)")
+            if info["present"]:
+                st.caption(f"\U0001f4be `{info['type_name']}` - state for this thread_id persists across runs.")
+            else:
+                st.caption("⚠️ No checkpointer - state resets every run; nothing survives a restart.")
+
+
+def render_graph_canvas(
+    compiled_graph,
+    key,
+    mode="readonly",
+    height=520,
+    state_schema=None,
+    checkpointer=_UNSET,
+):
     """mode: "readonly" (no interaction beyond pan/zoom) or "edit" (nodes are
     clickable; returns the clicked node's id so the caller can show that
     node's `configurable` fields - the fields themselves come from
     topology.build_elements(), this function never hardcodes what any node
     kind can edit).
+
+    state_schema: the module's own State TypedDict class (e.g. `State` from
+    its graph.py) - introspected generically via describe_state_schema(),
+    never module-specific. Omit to skip the state panel.
+
+    checkpointer: the real checkpointer instance a module compiled its graph
+    with, or None if it compiled without one - pass explicitly (not omitted)
+    whenever a module wants the memory badge shown; omitting it entirely
+    skips the badge for modules where memory isn't yet a concept.
 
     Returns: the clicked node's dict from topology.build_elements() nodes, or
     None if nothing was clicked (always None in "readonly" mode).
@@ -86,6 +153,10 @@ def render_graph_canvas(compiled_graph, key, mode="readonly", height=520):
         allow_zoom=True,
         hide_watermark=True,
     )
+
+    _render_router_captions(nodes)
+    _render_state_and_memory(state_schema, checkpointer)
+    st.caption(BASE_PATTERN_NOTE)
 
     if mode != "edit" or result_state is None or not result_state.selected_id:
         return None

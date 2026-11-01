@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "dashboard"))
 
-from graph import build_graph, TOOLS  # noqa: E402
+from graph import build_graph, TOOLS, State, get_checkpointer  # noqa: E402
 from common.groq_ui import list_groq_models  # noqa: E402
 from common.agent_canvas import render_graph_canvas  # noqa: E402
 import config_store  # noqa: E402
@@ -318,8 +318,21 @@ elif page == "2. How it works":
     )
 
     st.markdown("#### The agent loop")
-    st.caption("This is the real compiled graph, not a drawing - generated live from `app.get_graph()`. The checkpointer sits outside the graph itself: it loads/saves state around every run, which is why you won't see it as its own node here.")
-    render_graph_canvas(build_graph(api_key="unset"), key="m2_how_it_works_canvas")
+    st.caption("This is the real compiled graph, not a drawing - generated live from `app.get_graph()`. Click a node below to see what you can tune on it.")
+    clicked = render_graph_canvas(
+        build_graph(api_key="unset"), key="m2_how_it_works_canvas",
+        mode="edit", state_schema=State, checkpointer=get_checkpointer(),
+    )
+
+    if clicked and clicked["configurable"]:
+        with st.container(border=True):
+            st.markdown(f"**{clicked['style']['icon']} `{clicked['id']}`** is configurable here:")
+            for field in clicked["configurable"]:
+                st.caption(f"`{field}` = {active_config.get(field, '—')}")
+            if st.button("Go tweak this on the Play page →", key="jump_to_play"):
+                goto("5. Play — Tweak the Agent")
+    elif clicked:
+        st.caption(f"`{clicked['id']}` has nothing exposed as configurable - it's structural, not tunable.")
 
     cols = st.columns(4)
     for col, tool_name in zip(cols, config_store.ALL_TOOLS):
@@ -329,6 +342,7 @@ elif page == "2. How it works":
 
     st.divider()
     st.caption("Full source: modules/02_multi_tool_memory/graph.py")
+    st.caption("Want to see this loop run on a real question, tool calls and all? That's the next two steps.")
 
     if st.button("Try it yourself →", type="primary"):
         goto("3. Try it — Human")

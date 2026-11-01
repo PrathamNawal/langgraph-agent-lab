@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "dashboard"))
 
-from graph import build_graph  # noqa: E402
+from graph import build_graph, State  # noqa: E402
 from common.groq_ui import list_groq_models  # noqa: E402
 from common.agent_canvas import render_graph_canvas  # noqa: E402
 from eval_sets.calculator_eval import EVAL_QUESTIONS  # noqa: E402
@@ -282,8 +282,21 @@ elif page == "2. How it works":
     )
 
     st.markdown("#### The agent loop")
-    st.caption("This is the real compiled graph, not a drawing - generated live from `app.get_graph()`.")
-    render_graph_canvas(build_graph(api_key="unset"), key="m1_how_it_works_canvas")
+    st.caption("This is the real compiled graph, not a drawing - generated live from `app.get_graph()`. Click a node below to see what you can tune on it.")
+    clicked = render_graph_canvas(
+        build_graph(api_key="unset"), key="m1_how_it_works_canvas",
+        mode="edit", state_schema=State, checkpointer=None,
+    )
+
+    if clicked and clicked["configurable"]:
+        with st.container(border=True):
+            st.markdown(f"**{clicked['style']['icon']} `{clicked['id']}`** is configurable here:")
+            for field in clicked["configurable"]:
+                st.caption(f"`{field}` = {active_config.get(field, '—')}")
+            if st.button("Go tweak this on the Play page →", key="jump_to_play"):
+                goto("5. Play — Tweak the Agent")
+    elif clicked:
+        st.caption(f"`{clicked['id']}` has nothing exposed as configurable - it's structural, not tunable.")
 
     cols = st.columns(2)
     for col, tool_name in zip(cols, config_store.ALL_TOOLS):
@@ -293,6 +306,7 @@ elif page == "2. How it works":
 
     st.divider()
     st.caption("Full source: modules/01_single_tool_agent/graph.py")
+    st.caption("Want to see this loop run on a real question, tool calls and all? That's the next two steps.")
 
     if st.button("Try it yourself →", type="primary"):
         goto("3. Try it — Human")
