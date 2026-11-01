@@ -139,7 +139,24 @@ def render_graph_canvas(
     """
     nodes, edges = build_elements(compiled_graph)
     flow_nodes, flow_edges = _to_flow_elements(nodes, edges)
-    state = StreamlitFlowState(flow_nodes, flow_edges)
+
+    # The component decides "is this a fresh external push or just an echo
+    # of what I last returned" by comparing StreamlitFlowState.timestamp
+    # across reruns. Building a brand-new StreamlitFlowState (and therefore
+    # a brand-new default timestamp) on every single Streamlit rerun - as
+    # this used to do - makes every rerun look like a reset, including the
+    # very rerun a click itself triggers, so a selection could never survive
+    # long enough to be read back. Caching the component's own returned
+    # state in session_state and feeding it back in is the fix: the
+    # timestamp (and selected_id) only change when the component itself
+    # changes them.
+    cache_key = f"__agent_canvas_state__{key}"
+    cached = st.session_state.get(cache_key)
+    node_ids = {n.id for n in flow_nodes}
+    if cached is not None and {n.id for n in cached.nodes} == node_ids:
+        state = cached
+    else:
+        state = StreamlitFlowState(flow_nodes, flow_edges)
 
     result_state = streamlit_flow(
         key,
@@ -153,6 +170,7 @@ def render_graph_canvas(
         allow_zoom=True,
         hide_watermark=True,
     )
+    st.session_state[cache_key] = result_state if result_state is not None else state
 
     _render_router_captions(nodes)
     _render_state_and_memory(state_schema, checkpointer)
